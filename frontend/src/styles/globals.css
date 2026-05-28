@@ -1,0 +1,118 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Design tokens ─────────────────────────────────────────────────────────── */
+:root {
+  --canvas-bg:     #0d1117;
+  --surface-1:     #161b22;
+  --surface-2:     #21262d;
+  --surface-3:     #30363d;
+  --border:        #30363d;
+  --text-primary:  #e6edf3;
+  --text-muted:    #8b949e;
+  --text-faint:    #484f58;
+  --accent-blue:   #58a6ff;
+  --accent-purple: #a371f7;
+  --accent-green:  #3fb950;
+  --accent-orange: #e3b341;
+  --accent-red:    #f85149;
+}
+
+/* ── Reset ─────────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background: var(--canvas-bg);
+  color: var(--text-primary);
+  font-family: 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Tailwind bg-canvas utility ────────────────────────────────────────────── */
+.bg-canvas { background-color: var(--canvas-bg); }
+
+/* ── Scrollbars ────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--surface-1); }
+::-webkit-scrollbar-thumb { background: var(--surface-3); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-faint); }
+
+/* ── React Flow canvas overrides ───────────────────────────────────────────── */
+.react-flow { background: var(--canvas-bg) !important; }
+.react-flow__background { background: var(--canvas-bg) !important; }
+.react-flow__minimap { border-radius: 8px; overflow: hidden; }
+
+/* Remove RF attribution watermark */
+.react-flow__attribution { display: none !important; }
+
+/* Edge style */
+.react-flow__edge-path {
+  stroke: #30363d;
+  stroke-width: 1.5;
+}
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: #58a6ff;
+}
+.react-flow__edge:hover .react-flow__edge-path {
+  stroke: #484f58;
+  cursor: pointer;
+}
+
+/* Connection line while dragging */
+.react-flow__connection-path {
+  stroke: #58a6ff;
+  stroke-dasharray: 5;
+}
+
+/* Handle hover glow */
+.react-flow__handle:hover {
+  box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.3);
+}
+
+/* Controls */
+.react-flow__controls {
+  background: var(--surface-1) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 8px !important;
+  overflow: hidden;
+}
+.react-flow__controls-button {
+  background: var(--surface-1) !important;
+  border-bottom-color: var(--border) !important;
+  fill: var(--text-muted) !important;
+}
+.react-flow__controls-button:hover {
+  background: var(--surface-2) !important;
+}
+
+/* ── Monaco editor host ────────────────────────────────────────────────────── */
+.monaco-editor .margin { background: transparent !important; }
+.monaco-editor-background { background: #0d1117 !important; }
+.monaco-editor .monaco-editor-background { background: #0d1117 !important; }
+
+/* ── Panel resize handles ──────────────────────────────────────────────────── */
+[data-panel-resize-handle-id] {
+  background: var(--border);
+  transition: background 150ms;
+}
+[data-panel-resize-handle-id]:hover,
+[data-panel-resize-handle-id][data-resize-handle-active] {
+  background: var(--accent-blue);
+}
+
+/* ── Animations ────────────────────────────────────────────────────────────── */
+@keyframes fadeIn {
+  from { opacity: 0; transform: scale(0.97); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes slideRight {
+  from { opacity: 0; transform: translateX(16px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.animate-fade-in  { animation: fadeIn   160ms ease-out; }
+.panel-slide-right { animation: slideRight 180ms ease-out; }
