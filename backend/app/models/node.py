@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field, field_serializer
 class NodeType(str, Enum):
     SOURCE = "source"       # Runs SQL against BigQuery
     TRANSFORM = "transform" # Runs SQL against cached DuckDB views
+    CSV = "csv"             # Loads local CSV or uploaded CSV
 
 
 class NodeStatus(str, Enum):
@@ -54,6 +55,12 @@ class Node(BaseModel):
     # Source nodes only: BigQuery project
     bq_project: Optional[str] = None
 
+    # CSV nodes only
+    csv_path: Optional[str] = None
+    csv_filename: Optional[str] = None
+    csv_delimiter: str = ","
+    csv_has_header: bool = True
+
     @field_serializer('cached_at')
     def serialize_dt(self, v: datetime | None) -> str | None:
         return v.isoformat() if v else None
@@ -85,6 +92,10 @@ class UpdateNodeRequest(BaseModel):
     position: Optional[NodePosition] = None
     bq_project: Optional[str] = None
     upstream_ids: Optional[List[str]] = None
+    csv_path: Optional[str] = None
+    csv_filename: Optional[str] = None
+    csv_delimiter: Optional[str] = None
+    csv_has_header: Optional[bool] = None
 
 
 class CreateEdgeRequest(BaseModel):

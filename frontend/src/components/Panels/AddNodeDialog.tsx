@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { clsx } from "clsx";
-import { Database, Wand2, X } from "lucide-react";
+import { Database, Wand2, X, FileSpreadsheet } from "lucide-react";
 import { useNodeStore } from "@/store/nodeStore";
 import { useCanvasStore } from "@/store/canvasStore";
 import type { NodeType } from "@/types";
@@ -8,10 +8,17 @@ import type { NodeType } from "@/types";
 const NODE_TYPES: { type: NodeType; label: string; icon: React.ReactNode; description: string; color: string }[] = [
   {
     type: "source",
-    label: "Source",
+    label: "BigQuery",
     icon: <Database size={20} />,
-    description: "Run a SQL query against BigQuery and cache the result",
+    description: "Run SQL against BigQuery and cache local Parquet",
     color: "border-blue-500/40 bg-blue-500/5 hover:bg-blue-500/10 text-blue-400",
+  },
+  {
+    type: "csv",
+    label: "CSV Source",
+    icon: <FileSpreadsheet size={20} />,
+    description: "Upload or specify local CSV files to load as Parquet",
+    color: "border-emerald-500/40 bg-emerald-500/5 hover:bg-emerald-500/10 text-emerald-400",
   },
   {
     type: "transform",
@@ -112,7 +119,9 @@ export function AddNodeDialog() {
             placeholder={
               type === "source"
                 ? "e.g. fact_orders, user_events…"
-                : "e.g. joined_dataset, daily_metrics…"
+                : type === "csv"
+                  ? "e.g. local_sales_data, imported_users…"
+                  : "e.g. joined_dataset, daily_metrics…"
             }
           />
         </div>

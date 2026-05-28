@@ -2,7 +2,7 @@ import { memo } from 'react'
 import { Handle, Position } from '@xyflow/react'
 import {
   Database, Wand2, Play, RefreshCw, AlertCircle,
-  Clock, Rows, Loader2, ChevronRight,
+  Clock, Rows, Loader2, ChevronRight, FileSpreadsheet,
 } from 'lucide-react'
 import type { QFNode } from '@/types'
 import { StatusBadge } from '@/components/UI/StatusBadge'
@@ -13,12 +13,21 @@ import { useCanvasStore } from '@/store/canvasStore'
 const TYPE_CONFIG = {
   source: {
     icon: Database,
-    label: 'SOURCE',
+    label: 'BIGQUERY',
     border: 'border-blue-500/40',
     header: 'from-blue-950/30 to-transparent',
     accent: 'text-blue-400',
     badge: 'bg-blue-900/50 text-blue-300 border border-blue-700/40',
     handleColor: '#3b82f6',
+  },
+  csv: {
+    icon: FileSpreadsheet,
+    label: 'CSV',
+    border: 'border-emerald-500/40',
+    header: 'from-emerald-950/30 to-transparent',
+    accent: 'text-emerald-400',
+    badge: 'bg-emerald-900/50 text-emerald-300 border border-emerald-700/40',
+    handleColor: '#10b981',
   },
   transform: {
     icon: Wand2,
@@ -98,6 +107,12 @@ export const BaseNode = memo(function BaseNode({ qfNode, selected }: BaseNodePro
         <h3 className="text-sm font-semibold text-white truncate">{qfNode.name}</h3>
         {qfNode.bq_project && (
           <p className="text-[10px] text-slate-500 truncate mt-0.5 font-mono">{qfNode.bq_project}</p>
+        )}
+        {qfNode.csv_filename && (
+          <p className="text-[10px] text-emerald-500 truncate mt-0.5 font-mono">File: {qfNode.csv_filename}</p>
+        )}
+        {!qfNode.csv_filename && qfNode.csv_path && (
+          <p className="text-[10px] text-slate-500 truncate mt-0.5 font-mono">Path: {qfNode.csv_path}</p>
         )}
       </div>
 

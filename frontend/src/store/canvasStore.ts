@@ -7,6 +7,7 @@ interface CanvasStore {
   // Panel visibility
   isEditorOpen: boolean
   isResultsOpen: boolean
+  isCatalogOpen: boolean
   // Add-node dialog
   isAddNodeOpen: boolean
   addNodePosition: NodePosition
@@ -18,6 +19,7 @@ interface CanvasStore {
   toggleResults: () => void
   openAddNode: (pos?: NodePosition) => void
   closeAddNode: () => void
+  toggleCatalog: () => void
 }
 
 const DEFAULT_POS: NodePosition = { x: 200, y: 150 }
@@ -27,6 +29,7 @@ export const useCanvasStore = create<CanvasStore>((set) => ({
   isEditorOpen: false,
   isResultsOpen: false,
   isAddNodeOpen: false,
+  isCatalogOpen: false,
   addNodePosition: DEFAULT_POS,
 
   selectNode: (id) =>
@@ -42,4 +45,5 @@ export const useCanvasStore = create<CanvasStore>((set) => ({
     set({ isAddNodeOpen: true, addNodePosition: pos ?? DEFAULT_POS }),
 
   closeAddNode: () => set({ isAddNodeOpen: false }),
+  toggleCatalog: () => set((s) => ({ isCatalogOpen: !s.isCatalogOpen })),
 }))

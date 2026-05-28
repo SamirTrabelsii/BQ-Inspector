@@ -116,3 +116,15 @@ html, body, #root {
 
 .animate-fade-in  { animation: fadeIn   160ms ease-out; }
 .panel-slide-right { animation: slideRight 180ms ease-out; }
+
+@keyframes slideInLeft {
+  from { opacity: 0; transform: translateX(-12px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.animate-slide-in-left { animation: slideInLeft 180ms ease-out; }
+
+/* ── Custom scrollbar for catalog sidebar ─────────────────────────────────── */
+.custom-scrollbar::-webkit-scrollbar { width: 4px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: #21262d; border-radius: 2px; }
+.custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #30363d; }

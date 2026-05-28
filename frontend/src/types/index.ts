@@ -1,4 +1,4 @@
-export type NodeType = 'source' | 'transform'
+export type NodeType = 'source' | 'transform' | 'csv'
 export type NodeStatus = 'idle' | 'running' | 'cached' | 'error' | 'stale'
 
 export interface ColumnInfo {
@@ -21,13 +21,17 @@ export interface QFNode {
   version_id: string
   cached_at?: string
   cache_path?: string
-  schema?: ColumnInfo[]
+  columns?: ColumnInfo[]
   row_count?: number
   execution_time_ms?: number
   error_message?: string
   upstream_ids: string[]
   position: NodePosition
   bq_project?: string
+  csv_path?: string
+  csv_filename?: string
+  csv_delimiter?: string
+  csv_has_header?: boolean
 }
 
 export interface QFEdge {
@@ -54,6 +58,10 @@ export interface UpdateNodeRequest {
   position?: NodePosition
   bq_project?: string
   upstream_ids?: string[]
+  csv_path?: string
+  csv_filename?: string
+  csv_delimiter?: string
+  csv_has_header?: boolean
 }
 
 export interface CreateEdgeRequest {

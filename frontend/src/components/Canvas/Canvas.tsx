@@ -1,6 +1,6 @@
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import {
-  ReactFlow, Background, Controls, MiniMap, addEdge,
+  ReactFlow, Background, Controls, MiniMap, addEdge, useReactFlow,
   useNodesState, useEdgesState, Panel, BackgroundVariant,
   type Connection, type Edge, type Node,
 } from '@xyflow/react'
@@ -16,7 +16,7 @@ const NODE_TYPES = { sourceNode: SourceNode, transformNode: TransformNode }
 function toRFNode(qfNode: QFNode): Node {
   return {
     id: qfNode.id,
-    type: qfNode.type === 'source' ? 'sourceNode' : 'transformNode',
+    type: qfNode.type === 'transform' ? 'transformNode' : 'sourceNode',
     position: { x: qfNode.position.x, y: qfNode.position.y },
     data: {},
   }
@@ -33,11 +33,13 @@ function toRFEdge(qfEdge: QFEdge): Edge {
 }
 
 export function Canvas() {
-  const { nodes: qfNodes, edges: qfEdges, updateNode, addEdge: addQFEdge, removeEdge } = useNodeStore()
+  const { nodes: qfNodes, edges: qfEdges, updateNode, addEdge: addQFEdge, removeEdge, createNode } = useNodeStore()
   const { selectNode, selectedNodeId } = useCanvasStore()
+  const reactFlowInstance = useReactFlow()
+  const wrapperRef = useRef<HTMLDivElement>(null)
 
-  const [rfNodes, setRFNodes, onNodesChange] = useNodesState([])
-  const [rfEdges, setRFEdges, onEdgesChange] = useEdgesState([])
+  const [rfNodes, setRFNodes, onNodesChange] = useNodesState<Node>([])
+  const [rfEdges, setRFEdges, onEdgesChange] = useEdgesState<Edge>([])
 
   // Sync store → RF nodes
   useEffect(() => {
@@ -84,13 +86,54 @@ export function Canvas() {
   const onNodeClick  = useCallback((_: React.MouseEvent, node: Node) => { selectNode(node.id) }, [selectNode])
   const onPaneClick  = useCallback(() => { selectNode(null) }, [selectNode])
 
+  // ── Drag & Drop from BQ Catalog ─────────────────────────────────────────
+  const onDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+  }, [])
+
+  const onDrop = useCallback(
+    async (e: React.DragEvent) => {
+      e.preventDefault()
+      const raw = e.dataTransfer.getData('application/bq-table')
+      if (!raw) return
+
+      try {
+        const { project, dataset, table } = JSON.parse(raw) as {
+          project: string
+          dataset: string
+          table: string
+        }
+
+        // Convert drop pixel position → React Flow canvas position
+        const position = reactFlowInstance.screenToFlowPosition({
+          x: e.clientX,
+          y: e.clientY,
+        })
+
+        // Create the Source node at drop position
+        const node = await createNode(table, 'source', position)
+
+        // Update with BQ project and a starter SQL query
+        const sql = `SELECT *\nFROM \`${project}.${dataset}.${table}\`\nLIMIT 1000`
+        await updateNode(node.id, { bq_project: project, sql })
+
+        selectNode(node.id)
+      } catch (err) {
+        console.error('[canvas] BQ table drop failed:', err)
+      }
+    },
+    [createNode, updateNode, selectNode, reactFlowInstance]
+  )
+
   return (
-    <div className="w-full h-full">
+    <div className="w-full h-full" ref={wrapperRef}>
       <ReactFlow
         nodes={rfNodes} edges={rfEdges} nodeTypes={NODE_TYPES}
         onNodesChange={onNodesChange} onEdgesChange={onEdgesChange}
         onConnect={onConnect} onNodeDragStop={onNodeDragStop}
         onNodeClick={onNodeClick} onEdgeClick={onEdgeClick} onPaneClick={onPaneClick}
+        onDragOver={onDragOver} onDrop={onDrop}
         fitView fitViewOptions={{ padding: 0.2 }} minZoom={0.2} maxZoom={2}
         proOptions={{ hideAttribution: true }}
         deleteKeyCode={null}  // ← disable RF's own delete (we handle it manually)

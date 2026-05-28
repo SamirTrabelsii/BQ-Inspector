@@ -4,6 +4,7 @@ import asyncio
 import logging
 import time
 from datetime import datetime
+from pathlib import Path
 
 from app.engine.bigquery_connector import bq_connector
 from app.engine.cache_manager import cache_manager
@@ -40,6 +41,22 @@ async def execute_node(node_id: str) -> None:
                 lambda: bq_connector.execute_query(node.sql, node.bq_project),
             )
             logger.info(f"[executor] {node_id} → BigQuery returned {table.num_rows} rows, {table.num_columns} cols")
+        elif node.type == NodeType.CSV:
+            if not node.csv_path:
+                raise ValueError("No CSV file selected or uploaded")
+            path = Path(node.csv_path)
+            if not path.exists():
+                raise FileNotFoundError(f"CSV file not found at: {node.csv_path}")
+
+            posix_path = path.as_posix().replace("'", "''")
+            delim = node.csv_delimiter or ","
+            header = "true" if node.csv_has_header else "false"
+            logger.info(f"[executor] {node_id} → loading CSV from {posix_path} (delim='{delim}', header={header})...")
+
+            # Run DuckDB read_csv asynchronously
+            query = f"SELECT * FROM read_csv('{posix_path}', delim='{delim}', header={header})"
+            table = await duckdb_engine.execute(query)
+            logger.info(f"[executor] {node_id} → DuckDB CSV reader returned {table.num_rows} rows")
         else:
             if not node.sql.strip():
                 raise ValueError("SQL query is empty")

@@ -6,6 +6,7 @@ import { Canvas } from '@/components/Canvas/Canvas'
 import { NodeEditorPanel } from '@/components/Panels/NodeEditorPanel'
 import { ResultsPanel } from '@/components/Panels/ResultsPanel'
 import { AddNodeDialog } from '@/components/Panels/AddNodeDialog'
+import { BQCatalogSidebar } from '@/components/Panels/BQCatalogSidebar'
 import { useNodeStore } from '@/store/nodeStore'
 import { useCanvasStore } from '@/store/canvasStore'
 
@@ -17,6 +18,7 @@ export default function App() {
   const isEditorOpen  = useCanvasStore((s) => s.isEditorOpen)
   const isResultsOpen = useCanvasStore((s) => s.isResultsOpen)
   const isAddNodeOpen = useCanvasStore((s) => s.isAddNodeOpen)
+  const isCatalogOpen = useCanvasStore((s) => s.isCatalogOpen)
 
   useEffect(() => { loadCanvas() }, [loadCanvas])
 
@@ -38,6 +40,13 @@ export default function App() {
       )}
 
       <div className="flex-1 min-h-0 flex overflow-hidden">
+        {/* Left: BQ Catalog Sidebar */}
+        {isCatalogOpen && (
+          <div className="w-64 shrink-0 border-r border-[#21262d] animate-slide-in-left">
+            <BQCatalogSidebar />
+          </div>
+        )}
+
         <PanelGroup direction="vertical" className="flex-1 min-w-0">
 
           {/* Top row: Canvas [+ Editor panel] */}

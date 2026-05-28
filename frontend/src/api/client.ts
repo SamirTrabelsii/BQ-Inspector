@@ -159,3 +159,11 @@ export const searchNode = (
   http.get<SearchResponse>(`/nodes/${id}/search`, {
     params: { q, column, page, page_size: pageSize },
   }).then((r) => r.data)
+
+export const uploadCSV = (id: string, file: File): Promise<QFNode> => {
+  const formData = new FormData()
+  formData.append('file', file)
+  return http.post<QFNode>(`/nodes/${id}/upload`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }).then((r) => r.data)
+}

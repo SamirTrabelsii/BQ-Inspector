@@ -20,6 +20,7 @@ interface NodeStore {
   loadResults: (id: string) => Promise<void>
   patchNode: (node: QFNode) => void
   clearError: () => void
+  uploadCSV: (id: string, file: File) => Promise<void>
 }
 
 const MAX_POLL = 300
@@ -70,6 +71,10 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
 
   updateNode: async (id, req) => {
     const node = await api.updateNode(id, req)
+    set((s) => ({ nodes: { ...s.nodes, [id]: node } }))
+  },
+  uploadCSV: async (id, file) => {
+    const node = await api.uploadCSV(id, file)
     set((s) => ({ nodes: { ...s.nodes, [id]: node } }))
   },
 

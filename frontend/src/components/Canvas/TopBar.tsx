@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
-import { Plus, Zap, Database, CircleAlert, CircleCheck, Table2 } from "lucide-react";
+import { Plus, Zap, Database, CircleAlert, CircleCheck, Table2, FolderOpen } from "lucide-react";
 import { useCanvasStore } from "@/store/canvasStore";
 import { useNodeStore } from "@/store/nodeStore";
 import { getBQStatus } from "@/api/client";
 import type { BQStatus } from "@/types";
 
 export function TopBar() {
-  const { openAddNode } = useCanvasStore();
+  const { openAddNode, isCatalogOpen, toggleCatalog } = useCanvasStore();
   const { nodes } = useNodeStore();
 
   const [bqStatus, setBqStatus] = useState<BQStatus | null>(null);
@@ -25,7 +25,20 @@ export function TopBar() {
   return (
     <div className="flex items-center justify-between px-4 h-12 border-b border-[#30363d] bg-[#161b22] shrink-0 z-20">
       {/* ── Left: Logo + stats ─────────────────────────────────────────────── */}
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3">
+        {/* Toggle Catalog Sidebar Button */}
+        <button
+          onClick={() => toggleCatalog()}
+          className={`p-1.5 rounded-lg border transition-all ${
+            isCatalogOpen
+              ? "bg-blue-600/20 border-blue-500/40 text-blue-400 hover:bg-blue-600/30"
+              : "bg-[#0f1117] border-[#30363d] text-gray-400 hover:bg-[#1c2333] hover:text-white"
+          }`}
+          title={isCatalogOpen ? "Hide Catalog Sidebar" : "Show Catalog Sidebar"}
+        >
+          <FolderOpen size={14} />
+        </button>
+
         <div className="flex items-center gap-2">
           <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600">
             <Zap size={14} fill="white" className="text-white" />

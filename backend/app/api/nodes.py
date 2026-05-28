@@ -2,13 +2,16 @@ from __future__ import annotations
 
 from typing import List
 
-from fastapi import APIRouter, HTTPException, Response
+import shutil
+from pathlib import Path
+from fastapi import APIRouter, HTTPException, Response, UploadFile, File
 
+from app.config import settings
 from app.engine.cache_manager import cache_manager
 from app.engine.duckdb_engine import duckdb_engine
 from app.models.node import (
     CanvasState, CreateNodeRequest, Node,
-    NodePosition, NodeStatus, UpdateNodeRequest,
+    NodePosition, NodeStatus, UpdateNodeRequest, NodeType
 )
 from app.storage.metadata_store import metadata_store
 
@@ -66,6 +69,22 @@ async def update_node(node_id: str, req: UpdateNodeRequest) -> Node:
     if req.upstream_ids is not None:
         node.upstream_ids = req.upstream_ids
 
+    # Update CSV fields if provided
+    if req.csv_path is not None and req.csv_path != node.csv_path:
+        node.csv_path = req.csv_path
+        if node.status == NodeStatus.CACHED:
+            node.status = NodeStatus.STALE
+    if req.csv_filename is not None:
+        node.csv_filename = req.csv_filename
+    if req.csv_delimiter is not None and req.csv_delimiter != node.csv_delimiter:
+        node.csv_delimiter = req.csv_delimiter
+        if node.status == NodeStatus.CACHED:
+            node.status = NodeStatus.STALE
+    if req.csv_has_header is not None and req.csv_has_header != node.csv_has_header:
+        node.csv_has_header = req.csv_has_header
+        if node.status == NodeStatus.CACHED:
+            node.status = NodeStatus.STALE
+
     await metadata_store.save_node(node)
     return node
 
@@ -90,3 +109,31 @@ async def delete_node(node_id: str) -> Response:
             await metadata_store.save_node(other)
 
     return Response(status_code=204)
+
+
+@router.post("/nodes/{node_id}/upload", response_model=Node)
+async def upload_csv(node_id: str, file: UploadFile = File(...)) -> Node:
+    node = await metadata_store.get_node(node_id)
+    if not node:
+        raise HTTPException(status_code=404, detail="Node not found")
+    if node.type != NodeType.CSV:
+        raise HTTPException(status_code=400, detail="Node is not a CSV node")
+
+    # Define and ensure upload folder exists
+    uploads_dir = Path(settings.data_dir) / "uploads"
+    uploads_dir.mkdir(parents=True, exist_ok=True)
+
+    file_path = uploads_dir / f"{node_id}_{file.filename}"
+    # Save file
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    node.csv_path = str(file_path.absolute())
+    node.csv_filename = file.filename
+    # If cached or running, reset status to idle so they can run again
+    if node.status in (NodeStatus.CACHED, NodeStatus.STALE, NodeStatus.ERROR):
+        node.status = NodeStatus.IDLE
+        node.error_message = None
+
+    await metadata_store.save_node(node)
+    return node
