@@ -9,6 +9,24 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      // Force-unregister any stale PWA service workers left from vite-plugin-pwa
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+          for (var r of registrations) {
+            r.unregister().then(function() { console.log('[cleanup] Service worker unregistered'); });
+          }
+          if (registrations.length > 0) {
+            // Clear all caches left by workbox
+            caches.keys().then(function(names) {
+              for (var name of names) caches.delete(name);
+            });
+            console.log('[cleanup] Cleared stale PWA caches — reloading...');
+            location.reload();
+          }
+        });
+      }
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

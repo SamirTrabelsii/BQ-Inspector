@@ -90,7 +90,7 @@ async def search_node(
 @router.get("/nodes/{node_a}/diff/{node_b}")
 async def diff_nodes(
     node_a: str, node_b: str,
-    key_col: str   = Query(...),
+    key_col: str   = Query(..., description="Comma-separated key column(s), e.g. 'id' or 'id,date'"),
     status: str    = Query(default="all"),
     page: int      = Query(default=1, ge=1),
     page_size: int = Query(default=100, ge=1, le=500),
@@ -101,9 +101,13 @@ async def diff_nodes(
             raise HTTPException(status_code=404, detail=f"Node {nid} not found")
         if n.status not in (NodeStatus.CACHED, NodeStatus.STALE):
             raise HTTPException(status_code=409, detail=f"Node {nid} is not cached")
+    # Parse composite key columns (comma-separated)
+    key_cols = [k.strip() for k in key_col.split(",") if k.strip()]
+    if not key_cols:
+        raise HTTPException(status_code=400, detail="key_col must not be empty")
     offset = (page - 1) * page_size
     try:
-        result = await duckdb_engine.diff(node_a, node_b, key_col, status, page_size, offset)
+        result = await duckdb_engine.diff(node_a, node_b, key_cols, status, page_size, offset)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {**result, "node_a": node_a, "node_b": node_b,

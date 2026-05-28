@@ -39,7 +39,7 @@ def _to_posix(path: str) -> str:
 class DuckDBEngine:
     def __init__(self) -> None:
         self._conn: Optional[duckdb.DuckDBPyConnection] = None
-        self._executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="duckdb")
+        self._executor = ThreadPoolExecutor(max_workers=8, thread_name_prefix="duckdb")
 
     async def initialize(self) -> None:
         await asyncio.to_thread(self._init_sync)
@@ -124,58 +124,66 @@ class DuckDBEngine:
         return await loop.run_in_executor(self._executor, self._preview_sync, node_id, limit, offset)
 
     def _preview_sync(self, node_id: str, limit: int, offset: int) -> Dict[str, Any]:
-        rel     = self._conn.execute('SELECT * FROM "node_{}" LIMIT {} OFFSET {}'.format(node_id, limit, offset))
-        columns = [{"name": d[0], "type": _normalize_type(str(d[1]))} for d in rel.description]
-        rows    = [list(r) for r in rel.fetchall()]
-        return {"columns": columns, "rows": rows}
+        try:
+            rel     = self._conn.execute('SELECT * FROM "node_{}" LIMIT {} OFFSET {}'.format(node_id, limit, offset))
+            columns = [{"name": d[0], "type": _normalize_type(str(d[1]))} for d in rel.description]
+            rows    = [list(r) for r in rel.fetchall()]
+            return {"columns": columns, "rows": rows}
+        except Exception as e:
+            logger.error("Preview failed for node_%s: %s", node_id, e)
+            raise
 
     async def get_profile(self, node_id: str) -> list:
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(self._executor, self._profile_sync, node_id)
 
     def _profile_sync(self, node_id: str) -> list:
-        view = '"node_{}"'.format(node_id)
-        rel  = self._conn.execute("SUMMARIZE {}".format(view))
-        idx  = {d[0]: i for i, d in enumerate(rel.description)}
-        summ = rel.fetchall()
-        if not summ:
-            return []
-        total    = self._conn.execute("SELECT COUNT(*) FROM {}".format(view)).fetchone()[0]
-        i_name   = idx.get("column_name",     0)
-        i_type   = idx.get("column_type",     1)
-        i_min    = idx.get("min",             2)
-        i_max    = idx.get("max",             3)
-        i_unique = idx.get("approx_unique",   4)
-        i_nullp  = idx.get("null_percentage", 5)
-        str_cols = [r[i_name] for r in summ
-                    if any(t in str(r[i_type]).upper() for t in ("VARCHAR", "TEXT", "CHAR"))]
-        trim_data: dict = {}
-        if str_cols and total > 0:
-            parts = [
-                'SUM(CASE WHEN "{c}" IS NOT NULL AND "{c}"!=TRIM("{c}") THEN 1 ELSE 0 END)'.format(c=c)
-                for c in str_cols
-            ]
-            res = self._conn.execute("SELECT {} FROM {}".format(",".join(parts), view)).fetchone()
-            trim_data = {col: int(res[i] or 0) for i, col in enumerate(str_cols)}
-        profile = []
-        for r in summ:
-            col = r[i_name]
-            try:
-                null_pct = float(str(r[i_nullp]).replace("%", "").strip())
-            except (TypeError, ValueError):
-                null_pct = 0.0
-            profile.append({
-                "column":       col,
-                "type":         _normalize_type(str(r[i_type])),
-                "total":        total,
-                "null_count":   round(null_pct / 100 * total),
-                "null_pct":     round(null_pct, 1),
-                "unique_count": int(r[i_unique]) if r[i_unique] is not None else 0,
-                "min":          str(r[i_min]) if r[i_min] is not None else None,
-                "max":          str(r[i_max]) if r[i_max] is not None else None,
-                "trim_count":   trim_data.get(col),
-            })
-        return profile
+        try:
+            view = '"node_{}"'.format(node_id)
+            rel  = self._conn.execute("SUMMARIZE {}".format(view))
+            idx  = {d[0]: i for i, d in enumerate(rel.description)}
+            summ = rel.fetchall()
+            if not summ:
+                return []
+            total    = self._conn.execute("SELECT COUNT(*) FROM {}".format(view)).fetchone()[0]
+            i_name   = idx.get("column_name",     0)
+            i_type   = idx.get("column_type",     1)
+            i_min    = idx.get("min",             2)
+            i_max    = idx.get("max",             3)
+            i_unique = idx.get("approx_unique",   4)
+            i_nullp  = idx.get("null_percentage", 5)
+            str_cols = [r[i_name] for r in summ
+                        if any(t in str(r[i_type]).upper() for t in ("VARCHAR", "TEXT", "CHAR"))]
+            trim_data: dict = {}
+            if str_cols and total > 0:
+                parts = [
+                    'SUM(CASE WHEN "{c}" IS NOT NULL AND "{c}"!=TRIM("{c}") THEN 1 ELSE 0 END)'.format(c=c)
+                    for c in str_cols
+                ]
+                res = self._conn.execute("SELECT {} FROM {}".format(",".join(parts), view)).fetchone()
+                trim_data = {col: int(res[i] or 0) for i, col in enumerate(str_cols)}
+            profile = []
+            for r in summ:
+                col = r[i_name]
+                try:
+                    null_pct = float(str(r[i_nullp]).replace("%", "").strip())
+                except (TypeError, ValueError):
+                    null_pct = 0.0
+                profile.append({
+                    "column":       col,
+                    "type":         _normalize_type(str(r[i_type])),
+                    "total":        total,
+                    "null_count":   round(null_pct / 100 * total),
+                    "null_pct":     round(null_pct, 1),
+                    "unique_count": int(r[i_unique]) if r[i_unique] is not None else 0,
+                    "min":          str(r[i_min]) if r[i_min] is not None else None,
+                    "max":          str(r[i_max]) if r[i_max] is not None else None,
+                    "trim_count":   trim_data.get(col),
+                })
+            return profile
+        except Exception as e:
+            logger.error("Profile failed for node_%s: %s", node_id, e)
+            raise
 
     async def search(self, node_id: str, q: str, column: str, limit: int, offset: int) -> dict:
         loop = asyncio.get_running_loop()
@@ -200,53 +208,81 @@ class DuckDBEngine:
         rows  = [list(r) for r in rel.fetchall()]
         return {"columns": cols, "rows": rows, "total_matches": int(total)}
 
-    async def diff(self, node_a: str, node_b: str, key_col: str,
+    async def diff(self, node_a: str, node_b: str, key_cols: list,
                    status_filter: str, limit: int, offset: int) -> dict:
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(
             self._executor, self._diff_sync,
-            node_a, node_b, key_col, status_filter, limit, offset
+            node_a, node_b, key_cols, status_filter, limit, offset
         )
 
-    def _diff_sync(self, node_a: str, node_b: str, key_col: str,
+    def _diff_sync(self, node_a: str, node_b: str, key_cols: list,
                    status_filter: str, limit: int, offset: int) -> dict:
         va = '"node_{}"'.format(node_a)
         vb = '"node_{}"'.format(node_b)
         schema_a = [r[0] for r in self._conn.execute("DESCRIBE {}".format(va)).fetchall()]
         schema_b = [r[0] for r in self._conn.execute("DESCRIBE {}".format(vb)).fetchall()]
         common   = [c for c in schema_a if c in schema_b]
-        if key_col not in schema_a:
-            raise ValueError("Key column '{}' not found in node A".format(key_col))
-        non_key     = [c for c in common if c != key_col]
+
+        # Validate all key columns exist
+        for kc in key_cols:
+            if kc not in schema_a:
+                raise ValueError("Key column '{}' not found in node A".format(kc))
+            if kc not in schema_b:
+                raise ValueError("Key column '{}' not found in node B".format(kc))
+
+        # Non-key columns (used for change detection)
+        non_key = [c for c in common if c not in key_cols]
+
+        # Build composite JOIN condition: a."k1" = b."k1" AND a."k2" = b."k2" ...
+        join_conds = " AND ".join(
+            'CAST(a."{k}" AS VARCHAR) = CAST(b."{k}" AS VARCHAR)'.format(k=k)
+            for k in key_cols
+        )
+        join = "FROM {va} a FULL OUTER JOIN {vb} b ON {conds}".format(
+            va=va, vb=vb, conds=join_conds
+        )
+
+        # NULL checks for composite keys — row is "added" if ALL b-side keys are NULL
+        a_null_check = " AND ".join('a."{k}" IS NULL'.format(k=k) for k in key_cols)
+        b_null_check = " AND ".join('b."{k}" IS NULL'.format(k=k) for k in key_cols)
+        a_not_null   = " AND ".join('a."{k}" IS NOT NULL'.format(k=k) for k in key_cols)
+        b_not_null   = " AND ".join('b."{k}" IS NOT NULL'.format(k=k) for k in key_cols)
+
+        # Change detection on non-key columns
         change_cond = " OR ".join(
             'a."{c}" IS DISTINCT FROM b."{c}"'.format(c=c) for c in non_key
         ) if non_key else "false"
-        join = (
-            "FROM {va} a "
-            "FULL OUTER JOIN {vb} b "
-            "ON CAST(a.\"{k}\" AS VARCHAR) = CAST(b.\"{k}\" AS VARCHAR)"
-        ).format(va=va, vb=vb, k=key_col)
+
         status_expr = (
             "CASE "
-            "WHEN b.\"{k}\" IS NULL THEN 'added' "
-            "WHEN a.\"{k}\" IS NULL THEN 'removed' "
-            "WHEN {cc}              THEN 'changed' "
-            "ELSE                        'unchanged' "
+            "WHEN {b_null} THEN 'added' "
+            "WHEN {a_null} THEN 'removed' "
+            "WHEN {cc}     THEN 'changed' "
+            "ELSE               'unchanged' "
             "END"
-        ).format(k=key_col, cc=change_cond)
+        ).format(b_null=b_null_check, a_null=a_null_check, cc=change_cond)
+
+        # Summary counts
         s = self._conn.execute(
             "SELECT "
-            "COUNT(CASE WHEN b.\"{k}\" IS NULL THEN 1 END), "
-            "COUNT(CASE WHEN a.\"{k}\" IS NULL THEN 1 END), "
-            "COUNT(CASE WHEN a.\"{k}\" IS NOT NULL AND b.\"{k}\" IS NOT NULL AND ({cc}) THEN 1 END), "
-            "COUNT(CASE WHEN a.\"{k}\" IS NOT NULL AND b.\"{k}\" IS NOT NULL AND NOT ({cc}) THEN 1 END) "
-            "{join}".format(k=key_col, cc=change_cond, join=join)
+            "COUNT(CASE WHEN {b_null} THEN 1 END), "
+            "COUNT(CASE WHEN {a_null} THEN 1 END), "
+            "COUNT(CASE WHEN {a_nn} AND {b_nn} AND ({cc}) THEN 1 END), "
+            "COUNT(CASE WHEN {a_nn} AND {b_nn} AND NOT ({cc}) THEN 1 END) "
+            "{join}".format(
+                b_null=b_null_check, a_null=a_null_check,
+                a_nn=a_not_null, b_nn=b_not_null,
+                cc=change_cond, join=join
+            )
         ).fetchone()
         summary = {
             "added": int(s[0] or 0), "removed": int(s[1] or 0),
             "changed": int(s[2] or 0), "unchanged": int(s[3] or 0),
         }
         summary["total"] = sum(summary.values())
+
+        # Build SELECT with A__ and B__ prefixed columns
         a_sel = ", ".join('a."{c}" AS "A__{c}"'.format(c=c) for c in common)
         b_sel = ", ".join('b."{c}" AS "B__{c}"'.format(c=c) for c in common)
         base  = "SELECT ({st}) AS __status, {a}, {b} {j}".format(
@@ -280,7 +316,7 @@ class DuckDBEngine:
                 "changed_cols": changed_cols,
             })
         return {
-            "summary": summary, "columns": common,
+            "summary": summary, "columns": common, "key_cols": key_cols,
             "rows": rows, "total_filtered": int(total_f),
         }
 

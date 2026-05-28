@@ -7,6 +7,7 @@ interface NodeStore {
   edges: QFEdge[]
   results: Record<string, ResultsResponse>
   loading: boolean
+  error: string | null
   loadCanvas: () => Promise<void>
   createNode: (name: string, type: NodeType, position?: NodePosition) => Promise<QFNode>
   updateNode: (id: string, req: UpdateNodeRequest) => Promise<void>
@@ -18,6 +19,7 @@ interface NodeStore {
   removeEdge: (edgeId: string) => Promise<void>
   loadResults: (id: string) => Promise<void>
   patchNode: (node: QFNode) => void
+  clearError: () => void
 }
 
 const MAX_POLL = 300
@@ -42,15 +44,21 @@ function startPolling(nodeId: string, patchNode: (n: QFNode) => void) {
 }
 
 export const useNodeStore = create<NodeStore>((set, get) => ({
-  nodes: {}, edges: [], results: {}, loading: false,
+  nodes: {}, edges: [], results: {}, loading: false, error: null,
+
+  clearError: () => set({ error: null }),
 
   loadCanvas: async () => {
-    set({ loading: true })
+    set({ loading: true, error: null })
     try {
       const canvas = await api.getCanvas()
       const nodes: Record<string, QFNode> = {}
       canvas.nodes.forEach((n) => { nodes[n.id] = n })
       set({ nodes, edges: canvas.edges })
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Failed to load canvas'
+      console.error('[store] loadCanvas failed:', msg)
+      set({ error: msg })
     } finally { set({ loading: false }) }
   },
 

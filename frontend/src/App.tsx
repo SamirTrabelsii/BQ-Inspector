@@ -11,6 +11,9 @@ import { useCanvasStore } from '@/store/canvasStore'
 
 export default function App() {
   const loadCanvas    = useNodeStore((s) => s.loadCanvas)
+  const loading       = useNodeStore((s) => s.loading)
+  const error         = useNodeStore((s) => s.error)
+  const clearError    = useNodeStore((s) => s.clearError)
   const isEditorOpen  = useCanvasStore((s) => s.isEditorOpen)
   const isResultsOpen = useCanvasStore((s) => s.isResultsOpen)
   const isAddNodeOpen = useCanvasStore((s) => s.isAddNodeOpen)
@@ -20,6 +23,19 @@ export default function App() {
   return (
     <div className="flex flex-col h-screen bg-canvas overflow-hidden">
       <TopBar />
+
+      {/* Connection error banner */}
+      {error && (
+        <div className="flex items-center justify-center gap-3 px-4 py-2 bg-red-950/60 border-b border-red-800/50 shrink-0">
+          <span className="text-xs text-red-400">{error}</span>
+          <button
+            onClick={() => { clearError(); loadCanvas() }}
+            className="text-xs font-medium px-2.5 py-1 rounded bg-red-800/60 hover:bg-red-700/60 text-red-200 transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       <div className="flex-1 min-h-0 flex overflow-hidden">
         <PanelGroup direction="vertical" className="flex-1 min-w-0">

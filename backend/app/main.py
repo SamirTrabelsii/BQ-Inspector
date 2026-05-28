@@ -1,9 +1,11 @@
 from __future__ import annotations
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from app.config import settings
 from app.engine.duckdb_engine import duckdb_engine
 from app.storage.metadata_store import metadata_store
@@ -38,10 +40,39 @@ async def lifespan(app: FastAPI):
     logger.info(f"cache_dir={settings.cache_dir}  duckdb={settings.duckdb_path}")
     logger.info("=== startup complete ===")
     yield
+    # Graceful shutdown
+    await metadata_store.close()
     duckdb_engine.close()
 
 app = FastAPI(title="ZouGomaDataPlatform", version="0.1.0", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+
+
+@app.middleware("http")
+async def timeout_middleware(request: Request, call_next):
+    """Prevent any single request from hanging forever.
+    
+    Applies a 120-second timeout to all requests. Execution endpoints
+    return immediately (they use BackgroundTasks), so this mainly guards
+    against BigQuery browsing or DuckDB operations that stall.
+    """
+    try:
+        response = await asyncio.wait_for(call_next(request), timeout=120.0)
+        return response
+    except asyncio.TimeoutError:
+        logger.error(f"Request timed out: {request.method} {request.url.path}")
+        return JSONResponse(
+            status_code=504,
+            content={"detail": "Request timed out after 120 seconds"},
+        )
+    except Exception as exc:
+        logger.exception(f"Unhandled error in {request.method} {request.url.path}: {exc}")
+        return JSONResponse(
+            status_code=500,
+            content={"detail": str(exc)},
+        )
+
+
 app.include_router(nodes.router,     prefix="/api")
 app.include_router(edges.router,     prefix="/api")
 app.include_router(execution.router, prefix="/api")

@@ -7,8 +7,42 @@ import type {
 const http = axios.create({
   baseURL: '/api',
   headers: { 'Content-Type': 'application/json' },
-  timeout: 10000,   // ← add this line
+  timeout: 30_000,   // 30s default (was 10s — too aggressive)
 })
+
+// ── Retry interceptor ─────────────────────────────────────────────────────────
+// Automatically retries on network errors or 5xx (up to 2 retries with backoff)
+
+const MAX_RETRIES = 2
+const RETRY_DELAY_MS = 1_000
+
+http.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const config = error.config
+    if (!config) return Promise.reject(error)
+
+    config.__retryCount = config.__retryCount || 0
+
+    // Only retry on network errors or 5xx server errors, not on 4xx client errors
+    const isRetryable =
+      !error.response ||                      // network error / timeout
+      (error.response.status >= 500 && error.response.status < 600)
+
+    if (isRetryable && config.__retryCount < MAX_RETRIES) {
+      config.__retryCount += 1
+      console.warn(
+        `[api] Retry ${config.__retryCount}/${MAX_RETRIES} for ${config.method?.toUpperCase()} ${config.url}`
+      )
+      await new Promise((r) => setTimeout(r, RETRY_DELAY_MS * config.__retryCount))
+      return http(config)
+    }
+
+    return Promise.reject(error)
+  }
+)
+
+// ── API functions ─────────────────────────────────────────────────────────────
 
 export const getCanvas = (): Promise<CanvasState> =>
   http.get<CanvasState>('/canvas').then((r) => r.data)
@@ -89,6 +123,7 @@ export interface DiffSummary {
 
 export interface DiffResponse {
   node_a: string; node_b: string; key_col: string
+  key_cols: string[]
   summary: DiffSummary
   columns: string[]
   rows: DiffRow[]
@@ -98,11 +133,11 @@ export interface DiffResponse {
 
 export const getDiff = (
   nodeA: string, nodeB: string,
-  keyCol: string, status = 'all',
+  keyCols: string[], status = 'all',
   page = 1, pageSize = 100
 ): Promise<DiffResponse> =>
   http.get<DiffResponse>(`/nodes/${nodeA}/diff/${nodeB}`, {
-    params: { key_col: keyCol, status, page, page_size: pageSize },
+    params: { key_col: keyCols.join(','), status, page, page_size: pageSize },
   }).then((r) => r.data)
 
 export interface SearchResponse {

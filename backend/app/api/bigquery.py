@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Any, Dict, List
 
 from fastapi import APIRouter, HTTPException
@@ -11,7 +12,7 @@ router = APIRouter(prefix="/bq", tags=["bigquery"])
 
 @router.get("/status")
 async def bq_status() -> Dict[str, Any]:
-    available = bq_connector.is_available
+    available = await asyncio.to_thread(lambda: bq_connector.is_available)
     return {
         "available": available,
         "message": (
@@ -25,7 +26,7 @@ async def bq_status() -> Dict[str, Any]:
 @router.get("/projects")
 async def list_projects() -> List[Dict[str, Any]]:
     try:
-        return bq_connector.list_projects()
+        return await asyncio.to_thread(bq_connector.list_projects)
     except Exception as exc:
         raise HTTPException(status_code=503, detail=str(exc))
 
@@ -33,7 +34,7 @@ async def list_projects() -> List[Dict[str, Any]]:
 @router.get("/projects/{project}/datasets")
 async def list_datasets(project: str) -> List[Dict[str, str]]:
     try:
-        return bq_connector.list_datasets(project)
+        return await asyncio.to_thread(bq_connector.list_datasets, project)
     except Exception as exc:
         raise HTTPException(status_code=503, detail=str(exc))
 
@@ -41,7 +42,7 @@ async def list_datasets(project: str) -> List[Dict[str, str]]:
 @router.get("/projects/{project}/datasets/{dataset}/tables")
 async def list_tables(project: str, dataset: str) -> List[Dict[str, str]]:
     try:
-        return bq_connector.list_tables(project, dataset)
+        return await asyncio.to_thread(bq_connector.list_tables, project, dataset)
     except Exception as exc:
         raise HTTPException(status_code=503, detail=str(exc))
 
@@ -49,6 +50,6 @@ async def list_tables(project: str, dataset: str) -> List[Dict[str, str]]:
 @router.get("/projects/{project}/datasets/{dataset}/tables/{table}/schema")
 async def get_table_schema(project: str, dataset: str, table: str) -> List[Dict[str, str]]:
     try:
-        return bq_connector.get_table_schema(project, dataset, table)
+        return await asyncio.to_thread(bq_connector.get_table_schema, project, dataset, table)
     except Exception as exc:
         raise HTTPException(status_code=503, detail=str(exc))

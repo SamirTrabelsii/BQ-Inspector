@@ -373,8 +373,14 @@ export function ResultsPanel() {
             <Loader2 size={14} className="animate-spin" /><span className="text-sm">Loading…</span>
           </div>
         ) : error ? (
-          <div className="flex items-center justify-center h-full">
-            <p className="text-sm text-red-400 font-mono">{error}</p>
+          <div className="flex flex-col items-center justify-center h-full gap-3">
+            <p className="text-sm text-red-400 font-mono max-w-md text-center">{error}</p>
+            <button
+              onClick={() => { setError(null); loadData(1) }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium bg-slate-700 hover:bg-slate-600 text-slate-200 transition-all"
+            >
+              Retry
+            </button>
           </div>
         ) : !node ? (
           <div className="flex items-center justify-center h-full text-slate-600 text-sm">Select a node to view its data</div>

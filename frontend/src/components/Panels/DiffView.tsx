@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { Loader2, ChevronLeft, ChevronRight, GitCompare, ChevronDown } from 'lucide-react'
+import { useEffect, useState, useCallback } from 'react'
+import { Loader2, ChevronLeft, ChevronRight, GitCompare, X } from 'lucide-react'
 import { getDiff } from '@/api/client'
 import { useNodeStore } from '@/store/nodeStore'
 import type { DiffResponse, DiffRow, DiffSummary } from '@/api/client'
@@ -26,6 +26,74 @@ function SummaryTabs({
                     <span className="tabular-nums font-mono">{t.count.toLocaleString()}</span>
                 </button>
             ))}
+        </div>
+    )
+}
+
+// ── Composite Key Selector ─────────────────────────────────────────────────────
+function KeyColumnSelector({
+    columns,
+    selectedKeys,
+    onToggle,
+    onRemove,
+}: {
+    columns: Array<{ name: string }>
+    selectedKeys: string[]
+    onToggle: (col: string) => void
+    onRemove: (col: string) => void
+}) {
+    const [dropdownOpen, setDropdownOpen] = useState(false)
+    const available = columns.filter((c) => !selectedKeys.includes(c.name))
+
+    return (
+        <div className="flex items-center gap-1.5 relative">
+            <span className="text-[10px] text-slate-500 uppercase tracking-wider">Key</span>
+
+            {/* Selected key pills */}
+            <div className="flex items-center gap-1 flex-wrap">
+                {selectedKeys.map((k) => (
+                    <span
+                        key={k}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-mono bg-indigo-950/60 border border-indigo-700/50 text-indigo-300"
+                    >
+                        {k}
+                        {selectedKeys.length > 1 && (
+                            <button
+                                onClick={() => onRemove(k)}
+                                className="hover:text-red-400 transition-colors"
+                                title="Remove from key"
+                            >
+                                <X size={10} />
+                            </button>
+                        )}
+                    </span>
+                ))}
+            </div>
+
+            {/* Add column to key */}
+            {available.length > 0 && (
+                <div className="relative">
+                    <button
+                        onClick={() => setDropdownOpen(!dropdownOpen)}
+                        className="text-xs text-slate-500 hover:text-indigo-400 border border-dashed border-slate-700 hover:border-indigo-500 rounded px-1.5 py-0.5 transition-all"
+                    >
+                        + add
+                    </button>
+                    {dropdownOpen && (
+                        <div className="absolute top-full left-0 mt-1 z-50 bg-slate-800 border border-slate-700 rounded-lg shadow-xl py-1 min-w-[140px] max-h-48 overflow-auto">
+                            {available.map((c) => (
+                                <button
+                                    key={c.name}
+                                    onClick={() => { onToggle(c.name); setDropdownOpen(false) }}
+                                    className="block w-full text-left px-3 py-1.5 text-xs font-mono text-slate-300 hover:bg-slate-700/60 transition-colors"
+                                >
+                                    {c.name}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
         </div>
     )
 }
@@ -88,13 +156,15 @@ function SimpleTable({
 
 // ── Changed table — field-level before/after ──────────────────────────────────
 function ChangedTable({
-    columns, rows, keyCol,
-}: { columns: string[]; rows: DiffRow[]; keyCol: string }) {
+    columns, rows, keyCols,
+}: { columns: string[]; rows: DiffRow[]; keyCols: string[] }) {
     const changed = rows.filter((r) => r.status === 'changed' && r.changed_cols.length > 0)
 
     if (!changed.length) return (
         <div className="flex items-center justify-center h-32 text-slate-500 text-sm">No changed rows</div>
     )
+
+    const keyLabel = keyCols.join(' + ')
 
     return (
         <div className="overflow-auto h-full">
@@ -102,7 +172,7 @@ function ChangedTable({
                 <thead className="sticky top-0 z-10">
                     <tr>
                         <th className="px-3 py-2 bg-slate-800/95 border-b border-slate-700 text-left font-medium text-slate-300 w-40 whitespace-nowrap">
-                            {keyCol} (key)
+                            {keyLabel} (key)
                         </th>
                         <th className="px-3 py-2 bg-slate-800/95 border-b border-slate-700 text-left font-medium text-slate-300 w-40">
                             Field changed
@@ -117,7 +187,10 @@ function ChangedTable({
                 </thead>
                 <tbody>
                     {changed.map((row, ri) => {
-                        const keyVal = row.values[keyCol] ?? row.old_values?.[keyCol] ?? '—'
+                        // Build composite key display value
+                        const keyVal = keyCols
+                            .map((k) => row.values[k] ?? row.old_values?.[k] ?? '—')
+                            .join(' | ')
                         return row.changed_cols.map((col, ci) => {
                             const oldVal = row.old_values?.[col]
                             const newVal = row.values[col]
@@ -169,7 +242,7 @@ export function DiffView({ nodeAId }: { nodeAId: string }) {
     )
 
     const [nodeBId, setNodeBId] = useState('')
-    const [keyCol, setKeyCol] = useState('')
+    const [keyCols, setKeyCols] = useState<string[]>([])
     const [filter, setFilter] = useState('changed')   // default to most useful tab
     const [page, setPage] = useState(1)
     const [result, setResult] = useState<DiffResponse | null>(null)
@@ -180,22 +253,41 @@ export function DiffView({ nodeAId }: { nodeAId: string }) {
         if (!nodeBId && otherCached.length > 0) setNodeBId(otherCached[0].id)
     }, [otherCached.length])
 
+    // Auto-select initial key column(s)
     useEffect(() => {
-        if (nodeA?.columns?.length && !keyCol) {
+        if (nodeA?.columns?.length && keyCols.length === 0) {
             const preferred = nodeA.columns.find((c) => /^(id|key|uuid|pk|_id)$/i.test(c.name))
-            setKeyCol(preferred?.name ?? nodeA.columns[0].name)
+            setKeyCols([preferred?.name ?? nodeA.columns[0].name])
         }
     }, [nodeA?.columns])
 
+    const toggleKeyCol = useCallback((col: string) => {
+        setKeyCols((prev) => {
+            if (prev.includes(col)) {
+                // Don't allow removing the last key
+                return prev.length > 1 ? prev.filter((k) => k !== col) : prev
+            }
+            return [...prev, col]
+        })
+        setPage(1)
+        setResult(null)
+    }, [])
+
+    const removeKeyCol = useCallback((col: string) => {
+        setKeyCols((prev) => prev.length > 1 ? prev.filter((k) => k !== col) : prev)
+        setPage(1)
+        setResult(null)
+    }, [])
+
     useEffect(() => {
-        if (!nodeBId || !keyCol) return
+        if (!nodeBId || keyCols.length === 0) return
         runDiff()
-    }, [nodeBId, keyCol, filter, page])
+    }, [nodeBId, keyCols, filter, page])
 
     async function runDiff() {
         setLoading(true); setError(null)
         try {
-            const r = await getDiff(nodeAId, nodeBId, keyCol, filter, page, PAGE_SIZE)
+            const r = await getDiff(nodeAId, nodeBId, keyCols, filter, page, PAGE_SIZE)
             setResult(r)
         } catch (e: unknown) {
             setError(String(e))
@@ -243,15 +335,13 @@ export function DiffView({ nodeAId }: { nodeAId: string }) {
 
                 <div className="w-px h-4 bg-slate-700 mx-1" />
 
-                {/* Key column */}
-                <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] text-slate-500 uppercase tracking-wider">Key</span>
-                    <select value={keyCol}
-                        onChange={(e) => { setKeyCol(e.target.value); setPage(1); setResult(null) }}
-                        className="bg-slate-800 border border-slate-700 rounded px-2 py-0.5 text-xs text-slate-200 outline-none focus:border-indigo-500">
-                        {(nodeA?.columns ?? []).map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
-                    </select>
-                </div>
+                {/* Composite Key column selector */}
+                <KeyColumnSelector
+                    columns={nodeA?.columns ?? []}
+                    selectedKeys={keyCols}
+                    onToggle={toggleKeyCol}
+                    onRemove={removeKeyCol}
+                />
 
                 {loading && <Loader2 size={12} className="animate-spin text-slate-500 ml-1" />}
 
@@ -283,8 +373,14 @@ export function DiffView({ nodeAId }: { nodeAId: string }) {
             {/* ── Body ── */}
             <div className="flex-1 min-h-0 overflow-hidden">
                 {error ? (
-                    <div className="flex items-center justify-center h-full px-8">
+                    <div className="flex flex-col items-center justify-center h-full gap-3 px-8">
                         <p className="text-sm text-red-400 font-mono text-center">{error}</p>
+                        <button
+                            onClick={() => { setError(null); runDiff() }}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium bg-slate-700 hover:bg-slate-600 text-slate-200 transition-all"
+                        >
+                            Retry
+                        </button>
                     </div>
                 ) : loading && !result ? (
                     <div className="flex items-center justify-center h-full gap-2 text-slate-500">
@@ -296,7 +392,7 @@ export function DiffView({ nodeAId }: { nodeAId: string }) {
                         <ChangedTable
                             columns={result.columns}
                             rows={result.rows}
-                            keyCol={keyCol}
+                            keyCols={keyCols}
                         />
                     ) : (
                         <SimpleTable
