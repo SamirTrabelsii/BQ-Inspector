@@ -8,7 +8,7 @@ from typing import List, Optional
 import aiosqlite
 
 from app.config import settings
-from app.models.node import Edge, Node
+from app.models.node import Edge, Node, Variable
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +45,15 @@ class MetadataStore:
                 source_id  TEXT NOT NULL,
                 target_id  TEXT NOT NULL,
                 created_at TEXT NOT NULL
+            )
+        """)
+        await self._db.execute("""
+            CREATE TABLE IF NOT EXISTS variables (
+                name        TEXT PRIMARY KEY,
+                value       TEXT NOT NULL,
+                type        TEXT NOT NULL,
+                created_at  TEXT NOT NULL,
+                updated_at  TEXT NOT NULL
             )
         """)
         # Add indexes for common lookups
@@ -145,6 +154,45 @@ class MetadataStore:
         ) as cursor:
             rows = await cursor.fetchall()
         return [Edge(id=r[0], source_id=r[1], target_id=r[2]) for r in rows]
+
+    # ── Variables ────────────────────────────────────────────────────────────
+
+    async def get_all_variables(self) -> List[Variable]:
+        db = await self._ensure_connected()
+        async with db.execute(
+            "SELECT name, value, type FROM variables ORDER BY name"
+        ) as cursor:
+            rows = await cursor.fetchall()
+        return [Variable(name=r[0], value=r[1], type=r[2]) for r in rows]
+
+    async def get_variable(self, name: str) -> Optional[Variable]:
+        db = await self._ensure_connected()
+        async with db.execute(
+            "SELECT name, value, type FROM variables WHERE name = ?", (name,)
+        ) as cursor:
+            row = await cursor.fetchone()
+        return Variable(name=row[0], value=row[1], type=row[2]) if row else None
+
+    async def save_variable(self, var: Variable) -> None:
+        now = datetime.utcnow().isoformat()
+        db = await self._ensure_connected()
+        await db.execute(
+            """
+            INSERT INTO variables (name, value, type, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(name) DO UPDATE SET
+                value      = excluded.value,
+                type       = excluded.type,
+                updated_at = excluded.updated_at
+            """,
+            (var.name, var.value, var.type, now, now),
+        )
+        await db.commit()
+
+    async def delete_variable(self, name: str) -> None:
+        db = await self._ensure_connected()
+        await db.execute("DELETE FROM variables WHERE name = ?", (name,))
+        await db.commit()
 
 
 metadata_store = MetadataStore()

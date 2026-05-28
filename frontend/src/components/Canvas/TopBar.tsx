@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
-import { Plus, Zap, Database, CircleAlert, CircleCheck, Table2, FolderOpen } from "lucide-react";
+import { Plus, Zap, Database, CircleAlert, CircleCheck, Table2, FolderOpen, Braces } from "lucide-react";
 import { useCanvasStore } from "@/store/canvasStore";
 import { useNodeStore } from "@/store/nodeStore";
 import { getBQStatus } from "@/api/client";
 import type { BQStatus } from "@/types";
 
 export function TopBar() {
-  const { openAddNode, isCatalogOpen, toggleCatalog } = useCanvasStore();
+  const { openAddNode, isCatalogOpen, toggleCatalog, leftSidebarTab, setLeftSidebarTab } = useCanvasStore();
   const { nodes } = useNodeStore();
 
   const [bqStatus, setBqStatus] = useState<BQStatus | null>(null);
@@ -28,15 +28,42 @@ export function TopBar() {
       <div className="flex items-center gap-3">
         {/* Toggle Catalog Sidebar Button */}
         <button
-          onClick={() => toggleCatalog()}
+          onClick={() => {
+            if (isCatalogOpen && leftSidebarTab === 'catalog') {
+              toggleCatalog();
+            } else {
+              setLeftSidebarTab('catalog');
+              if (!isCatalogOpen) toggleCatalog();
+            }
+          }}
           className={`p-1.5 rounded-lg border transition-all ${
-            isCatalogOpen
+            isCatalogOpen && leftSidebarTab === 'catalog'
               ? "bg-blue-600/20 border-blue-500/40 text-blue-400 hover:bg-blue-600/30"
               : "bg-[#0f1117] border-[#30363d] text-gray-400 hover:bg-[#1c2333] hover:text-white"
           }`}
-          title={isCatalogOpen ? "Hide Catalog Sidebar" : "Show Catalog Sidebar"}
+          title={isCatalogOpen && leftSidebarTab === 'catalog' ? "Hide Catalog Sidebar" : "Show Catalog Sidebar"}
         >
           <FolderOpen size={14} />
+        </button>
+
+        {/* Toggle Global Parameters Button */}
+        <button
+          onClick={() => {
+            if (isCatalogOpen && leftSidebarTab === 'variables') {
+              toggleCatalog();
+            } else {
+              setLeftSidebarTab('variables');
+              if (!isCatalogOpen) toggleCatalog();
+            }
+          }}
+          className={`p-1.5 rounded-lg border transition-all ${
+            isCatalogOpen && leftSidebarTab === 'variables'
+              ? "bg-purple-600/20 border-purple-500/40 text-purple-400 hover:bg-purple-600/30"
+              : "bg-[#0f1117] border-[#30363d] text-gray-400 hover:bg-[#1c2333] hover:text-white"
+          }`}
+          title={isCatalogOpen && leftSidebarTab === 'variables' ? "Hide Global Parameters" : "Show Global Parameters"}
+        >
+          <Braces size={14} />
         </button>
 
         <div className="flex items-center gap-2">

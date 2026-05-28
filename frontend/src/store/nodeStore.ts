@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { QFNode, QFEdge, UpdateNodeRequest, ResultsResponse, NodeType, NodePosition } from '../types'
+import type { QFNode, QFEdge, UpdateNodeRequest, ResultsResponse, NodeType, NodePosition, QFVariable } from '../types'
 import * as api from '../api/client'
 
 interface NodeStore {
@@ -21,6 +21,10 @@ interface NodeStore {
   patchNode: (node: QFNode) => void
   clearError: () => void
   uploadCSV: (id: string, file: File) => Promise<void>
+  variables: QFVariable[]
+  loadVariables: () => Promise<void>
+  saveVariable: (varData: QFVariable, originalName?: string) => Promise<void>
+  deleteVariable: (name: string) => Promise<void>
 }
 
 const MAX_POLL = 300
@@ -45,7 +49,7 @@ function startPolling(nodeId: string, patchNode: (n: QFNode) => void) {
 }
 
 export const useNodeStore = create<NodeStore>((set, get) => ({
-  nodes: {}, edges: [], results: {}, loading: false, error: null,
+  nodes: {}, edges: [], results: {}, variables: [], loading: false, error: null,
 
   clearError: () => set({ error: null }),
 
@@ -55,7 +59,15 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
       const canvas = await api.getCanvas()
       const nodes: Record<string, QFNode> = {}
       canvas.nodes.forEach((n) => { nodes[n.id] = n })
-      set({ nodes, edges: canvas.edges })
+      
+      let vars: QFVariable[] = []
+      try {
+        vars = await api.listVariables()
+      } catch (err) {
+        console.error('[store] failed to load variables:', err)
+      }
+
+      set({ nodes, edges: canvas.edges, variables: vars })
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Failed to load canvas'
       console.error('[store] loadCanvas failed:', msg)
@@ -118,4 +130,45 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
   },
 
   patchNode: (node) => set((s) => ({ nodes: { ...s.nodes, [node.id]: node } })),
+
+  loadVariables: async () => {
+    try {
+      const vars = await api.listVariables()
+      set({ variables: vars })
+    } catch (e: unknown) {
+      console.error('[store] loadVariables failed:', e)
+    }
+  },
+
+  saveVariable: async (varData, originalName) => {
+    try {
+      const keyName = originalName || varData.name
+      const existing = get().variables.find((v) => v.name === keyName)
+      let updatedVar: QFVariable
+      if (existing) {
+        updatedVar = await api.updateVariable(keyName, varData)
+      } else {
+        updatedVar = await api.createVariable(varData)
+      }
+      set((s) => {
+        const filtered = s.variables.filter((v) => v.name !== keyName)
+        return { variables: [...filtered, updatedVar] }
+      })
+      await get().loadCanvas()
+    } catch (e: unknown) {
+      console.error('[store] saveVariable failed:', e)
+      throw e
+    }
+  },
+
+  deleteVariable: async (name) => {
+    try {
+      await api.deleteVariable(name)
+      set((s) => ({ variables: s.variables.filter((v) => v.name !== name) }))
+      await get().loadCanvas()
+    } catch (e: unknown) {
+      console.error('[store] deleteVariable failed:', e)
+      throw e
+    }
+  },
 }))

@@ -86,3 +86,10 @@ export interface BQStatus {
 export interface RFNodeData {
   qfNode: QFNode
 }
+
+export interface QFVariable {
+  name: string
+  value: string
+  type: 'string' | 'number' | 'boolean' | 'date'
+}
+

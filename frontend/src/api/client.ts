@@ -1,7 +1,7 @@
 import axios from 'axios'
 import type {
   CanvasState, CreateEdgeRequest, CreateNodeRequest,
-  QFEdge, QFNode, ResultsResponse, UpdateNodeRequest, BQStatus,
+  QFEdge, QFNode, ResultsResponse, UpdateNodeRequest, BQStatus, QFVariable,
 } from '../types'
 
 const http = axios.create({
@@ -167,3 +167,17 @@ export const uploadCSV = (id: string, file: File): Promise<QFNode> => {
     headers: { 'Content-Type': 'multipart/form-data' },
   }).then((r) => r.data)
 }
+
+// ── Variables ────────────────────────────────────────────────────────────
+
+export const listVariables = (): Promise<QFVariable[]> =>
+  http.get<QFVariable[]>('/variables').then((r) => r.data)
+
+export const createVariable = (req: QFVariable): Promise<QFVariable> =>
+  http.post<QFVariable>('/variables', req).then((r) => r.data)
+
+export const updateVariable = (name: string, req: QFVariable): Promise<QFVariable> =>
+  http.put<QFVariable>(`/variables/${name}`, req).then((r) => r.data)
+
+export const deleteVariable = (name: string): Promise<void> =>
+  http.delete(`/variables/${name}`).then(() => undefined)

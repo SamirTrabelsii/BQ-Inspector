@@ -66,6 +66,12 @@ class Node(BaseModel):
         return v.isoformat() if v else None
 
 
+class Variable(BaseModel):
+    name: str
+    value: str
+    type: str  # string | number | boolean | date
+
+
 class Edge(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4())[:8])
     source_id: str  # upstream node

@@ -11,7 +11,7 @@ from app.engine.duckdb_engine import duckdb_engine
 from app.storage.metadata_store import metadata_store
 from app.models.node import NodeStatus
 from app.api import bigquery as bq_api
-from app.api import edges, execution, nodes
+from app.api import edges, execution, nodes, variables
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)-8s %(name)s %(message)s", datefmt="%H:%M:%S")
 logger = logging.getLogger(__name__)
@@ -77,6 +77,7 @@ app.include_router(nodes.router,     prefix="/api")
 app.include_router(edges.router,     prefix="/api")
 app.include_router(execution.router, prefix="/api")
 app.include_router(bq_api.router,    prefix="/api")
+app.include_router(variables.router, prefix="/api")
 
 @app.get("/api/health", tags=["system"])
 async def health():

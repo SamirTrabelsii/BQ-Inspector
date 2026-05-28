@@ -15,6 +15,39 @@ from app.storage.metadata_store import metadata_store
 logger = logging.getLogger(__name__)
 
 
+async def interpolate_sql(sql: str) -> str:
+    """Replace {{ name }} references in SQL with type-safe literal values."""
+    variables = await metadata_store.get_all_variables()
+    interpolated = sql
+    
+    for var in variables:
+        pattern = f"{{{{{var.name}}}}}"
+        if pattern not in interpolated:
+            continue
+
+        # Format based on variable type
+        var_type = var.type.strip().lower()
+        if var_type == "boolean":
+            val_lower = var.value.strip().lower()
+            replacement = "true" if val_lower in ("true", "1", "t", "yes", "y") else "false"
+        elif var_type == "number":
+            val_clean = var.value.strip()
+            try:
+                if "." in val_clean:
+                    replacement = str(float(val_clean))
+                else:
+                    replacement = str(int(val_clean))
+            except ValueError:
+                replacement = "0"
+        else:  # string, date
+            escaped = var.value.replace("'", "''")
+            replacement = f"'{escaped}'"
+        
+        interpolated = interpolated.replace(pattern, replacement)
+        
+    return interpolated
+
+
 async def execute_node(node_id: str) -> None:
     node = await metadata_store.get_node(node_id)
     if node is None:
@@ -35,10 +68,15 @@ async def execute_node(node_id: str) -> None:
         if node.type == NodeType.SOURCE:
             if not node.sql.strip():
                 raise ValueError("SQL query is empty")
+            
+            interpolated_sql = await interpolate_sql(node.sql)
+            if node.sql != interpolated_sql:
+                logger.info(f"[executor] {node_id} → interpolated SQL: {interpolated_sql!r}")
+
             logger.info(f"[executor] {node_id} → sending query to BigQuery...")
             table = await loop.run_in_executor(
                 None,
-                lambda: bq_connector.execute_query(node.sql, node.bq_project),
+                lambda: bq_connector.execute_query(interpolated_sql, node.bq_project),
             )
             logger.info(f"[executor] {node_id} → BigQuery returned {table.num_rows} rows, {table.num_columns} cols")
         elif node.type == NodeType.CSV:
@@ -60,8 +98,13 @@ async def execute_node(node_id: str) -> None:
         else:
             if not node.sql.strip():
                 raise ValueError("SQL query is empty")
+            
+            interpolated_sql = await interpolate_sql(node.sql)
+            if node.sql != interpolated_sql:
+                logger.info(f"[executor] {node_id} → interpolated SQL: {interpolated_sql!r}")
+
             logger.info(f"[executor] {node_id} → executing DuckDB transform...")
-            table = await duckdb_engine.execute(node.sql)
+            table = await duckdb_engine.execute(interpolated_sql)
             logger.info(f"[executor] {node_id} → DuckDB returned {table.num_rows} rows")
 
         # ── Step 2: write parquet ────────────────────────────────────────────
