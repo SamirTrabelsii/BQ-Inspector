@@ -4,7 +4,7 @@ from typing import List
 
 from fastapi import APIRouter, HTTPException, Response
 
-from app.models.node import CreateEdgeRequest, Edge
+from app.models.node import CreateEdgeRequest, Edge, NodeStatus
 from app.storage.metadata_store import metadata_store
 
 router = APIRouter(tags=["edges"])
@@ -37,7 +37,10 @@ async def create_edge(req: CreateEdgeRequest) -> Edge:
     # Keep target.upstream_ids in sync
     if req.source_id not in target.upstream_ids:
         target.upstream_ids.append(req.source_id)
+        if target.status == NodeStatus.CACHED:
+            target.status = NodeStatus.STALE
         await metadata_store.save_node(target)
+        await metadata_store.propagate_staleness(target.id)
 
     return edge
 
@@ -55,6 +58,9 @@ async def delete_edge(edge_id: str) -> Response:
     target = await metadata_store.get_node(edge.target_id)
     if target and edge.source_id in target.upstream_ids:
         target.upstream_ids.remove(edge.source_id)
+        if target.status == NodeStatus.CACHED:
+            target.status = NodeStatus.STALE
         await metadata_store.save_node(target)
+        await metadata_store.propagate_staleness(target.id)
 
     return Response(status_code=204)

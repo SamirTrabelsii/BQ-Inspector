@@ -80,7 +80,8 @@ class DuckDBEngine:
         await loop.run_in_executor(self._executor, self._register_sync, node_id, posix)
 
     def _register_sync(self, node_id: str, posix_path: str) -> None:
-        self._conn.execute(
+        cursor = self._conn.cursor()
+        cursor.execute(
             'CREATE OR REPLACE VIEW "node_{id}" AS SELECT * FROM read_parquet(\'{p}\')'.format(
                 id=node_id, p=posix_path
             )
@@ -91,7 +92,7 @@ class DuckDBEngine:
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(
             self._executor,
-            lambda: self._conn.execute('DROP VIEW IF EXISTS "node_{}"'.format(node_id)),
+            lambda: self._conn.cursor().execute('DROP VIEW IF EXISTS "node_{}"'.format(node_id)).close(),
         )
 
     async def execute(self, sql: str) -> pa.Table:
@@ -99,14 +100,16 @@ class DuckDBEngine:
         return await loop.run_in_executor(self._executor, self._execute_sync, sql)
 
     def _execute_sync(self, sql: str) -> pa.Table:
-        return self._conn.execute(sql).arrow()
+        cursor = self._conn.cursor()
+        return cursor.execute(sql).arrow()
 
     async def get_schema(self, node_id: str) -> List[ColumnInfo]:
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(self._executor, self._schema_sync, node_id)
 
     def _schema_sync(self, node_id: str) -> List[ColumnInfo]:
-        rows = self._conn.execute('DESCRIBE "node_{}"'.format(node_id)).fetchall()
+        cursor = self._conn.cursor()
+        rows = cursor.execute('DESCRIBE "node_{}"'.format(node_id)).fetchall()
         return [
             ColumnInfo(name=r[0], type=_normalize_type(str(r[1])), nullable=(r[2] == "YES"))
             for r in rows
@@ -117,15 +120,17 @@ class DuckDBEngine:
         return await loop.run_in_executor(self._executor, self._count_sync, node_id)
 
     def _count_sync(self, node_id: str) -> int:
-        return self._conn.execute('SELECT COUNT(*) FROM "node_{}"'.format(node_id)).fetchone()[0]
+        cursor = self._conn.cursor()
+        return cursor.execute('SELECT COUNT(*) FROM "node_{}"'.format(node_id)).fetchone()[0]
 
     async def get_preview(self, node_id: str, limit: int = 200, offset: int = 0) -> Dict[str, Any]:
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(self._executor, self._preview_sync, node_id, limit, offset)
 
     def _preview_sync(self, node_id: str, limit: int, offset: int) -> Dict[str, Any]:
+        cursor = self._conn.cursor()
         try:
-            rel     = self._conn.execute('SELECT * FROM "node_{}" LIMIT {} OFFSET {}'.format(node_id, limit, offset))
+            rel     = cursor.execute('SELECT * FROM "node_{}" LIMIT {} OFFSET {}'.format(node_id, limit, offset))
             columns = [{"name": d[0], "type": _normalize_type(str(d[1]))} for d in rel.description]
             rows    = [list(r) for r in rel.fetchall()]
             return {"columns": columns, "rows": rows}
@@ -138,14 +143,15 @@ class DuckDBEngine:
         return await loop.run_in_executor(self._executor, self._profile_sync, node_id)
 
     def _profile_sync(self, node_id: str) -> list:
+        cursor = self._conn.cursor()
         try:
             view = '"node_{}"'.format(node_id)
-            rel  = self._conn.execute("SUMMARIZE {}".format(view))
+            rel  = cursor.execute("SUMMARIZE {}".format(view))
             idx  = {d[0]: i for i, d in enumerate(rel.description)}
             summ = rel.fetchall()
             if not summ:
                 return []
-            total    = self._conn.execute("SELECT COUNT(*) FROM {}".format(view)).fetchone()[0]
+            total    = cursor.execute("SELECT COUNT(*) FROM {}".format(view)).fetchone()[0]
             i_name   = idx.get("column_name",     0)
             i_type   = idx.get("column_type",     1)
             i_min    = idx.get("min",             2)
@@ -160,7 +166,7 @@ class DuckDBEngine:
                     'SUM(CASE WHEN "{c}" IS NOT NULL AND "{c}"!=TRIM("{c}") THEN 1 ELSE 0 END)'.format(c=c)
                     for c in str_cols
                 ]
-                res = self._conn.execute("SELECT {} FROM {}".format(",".join(parts), view)).fetchone()
+                res = cursor.execute("SELECT {} FROM {}".format(",".join(parts), view)).fetchone()
                 trim_data = {col: int(res[i] or 0) for i, col in enumerate(str_cols)}
             profile = []
             for r in summ:
@@ -190,18 +196,19 @@ class DuckDBEngine:
         return await loop.run_in_executor(self._executor, self._search_sync, node_id, q, column, limit, offset)
 
     def _search_sync(self, node_id: str, q: str, column: str, limit: int, offset: int) -> dict:
+        cursor = self._conn.cursor()
         view   = '"node_{}"'.format(node_id)
         safe_q = q.replace("'", "''")
-        schema = self._conn.execute("DESCRIBE {}".format(view)).fetchall()
+        schema = cursor.execute("DESCRIBE {}".format(view)).fetchall()
         if column:
             where = 'CAST("{}" AS VARCHAR) ILIKE \'%{}%\''.format(column, safe_q)
         else:
             parts = ['CAST("{}" AS VARCHAR) ILIKE \'%{}%\''.format(r[0], safe_q) for r in schema]
             where = " OR ".join(parts)
-        total = self._conn.execute(
+        total = cursor.execute(
             "SELECT COUNT(*) FROM {} WHERE {}".format(view, where)
         ).fetchone()[0]
-        rel   = self._conn.execute(
+        rel   = cursor.execute(
             "SELECT * FROM {} WHERE {} LIMIT {} OFFSET {}".format(view, where, limit, offset)
         )
         cols  = [{"name": d[0], "type": _normalize_type(str(d[1]))} for d in rel.description]
@@ -218,10 +225,11 @@ class DuckDBEngine:
 
     def _diff_sync(self, node_a: str, node_b: str, key_cols: list,
                    status_filter: str, limit: int, offset: int) -> dict:
+        cursor = self._conn.cursor()
         va = '"node_{}"'.format(node_a)
         vb = '"node_{}"'.format(node_b)
-        schema_a = [r[0] for r in self._conn.execute("DESCRIBE {}".format(va)).fetchall()]
-        schema_b = [r[0] for r in self._conn.execute("DESCRIBE {}".format(vb)).fetchall()]
+        schema_a = [r[0] for r in cursor.execute("DESCRIBE {}".format(va)).fetchall()]
+        schema_b = [r[0] for r in cursor.execute("DESCRIBE {}".format(vb)).fetchall()]
         common   = [c for c in schema_a if c in schema_b]
 
         # Validate all key columns exist
@@ -264,7 +272,7 @@ class DuckDBEngine:
         ).format(b_null=b_null_check, a_null=a_null_check, cc=change_cond)
 
         # Summary counts
-        s = self._conn.execute(
+        s = cursor.execute(
             "SELECT "
             "COUNT(CASE WHEN {b_null} THEN 1 END), "
             "COUNT(CASE WHEN {a_null} THEN 1 END), "
@@ -290,10 +298,10 @@ class DuckDBEngine:
         )
         where   = "WHERE __status='{}'".format(status_filter) \
                   if status_filter not in ("", "all") else ""
-        total_f = self._conn.execute(
+        total_f = cursor.execute(
             "SELECT COUNT(*) FROM ({}) t {}".format(base, where)
         ).fetchone()[0]
-        rel     = self._conn.execute(
+        rel     = cursor.execute(
             "SELECT * FROM ({}) t {} LIMIT {} OFFSET {}".format(base, where, limit, offset)
         )
         col_idx = {d[0]: i for i, d in enumerate(rel.description)}

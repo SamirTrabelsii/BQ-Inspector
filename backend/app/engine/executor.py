@@ -45,6 +45,16 @@ async def interpolate_sql(sql: str) -> str:
         
         interpolated = interpolated.replace(pattern, replacement)
         
+    # Interpolate node names into DuckDB view references
+    # Sort nodes by name length descending to avoid partial replacements (e.g., matching 'Sales' before 'Sales Data')
+    all_nodes = await metadata_store.get_all_nodes()
+    sorted_nodes = sorted(all_nodes, key=lambda n: len(n.name), reverse=True)
+    
+    for n in sorted_nodes:
+        pattern = f"{{{{{n.name}}}}}"
+        if pattern in interpolated:
+            interpolated = interpolated.replace(pattern, f'"node_{n.id}"')
+            
     return interpolated
 
 
@@ -141,11 +151,6 @@ async def execute_node(node_id: str) -> None:
 
     await metadata_store.save_node(node)
 
-    # Propagate staleness to downstream nodes
+    # Propagate staleness recursively to downstream nodes
     if node.status == NodeStatus.CACHED:
-        all_nodes = await metadata_store.get_all_nodes()
-        for downstream in all_nodes:
-            if node_id in downstream.upstream_ids and downstream.status == NodeStatus.CACHED:
-                downstream.status = NodeStatus.STALE
-                await metadata_store.save_node(downstream)
-                logger.info(f"[executor] marked downstream {downstream.id} as STALE")
+        await metadata_store.propagate_staleness(node_id)

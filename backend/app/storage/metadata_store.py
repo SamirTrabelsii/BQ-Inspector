@@ -1,14 +1,15 @@
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Set
 
 import aiosqlite
 
 from app.config import settings
-from app.models.node import Edge, Node, Variable
+from app.models.node import Edge, Node, NodeStatus, Variable
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +119,41 @@ class MetadataStore:
         db = await self._ensure_connected()
         await db.execute("DELETE FROM nodes WHERE id = ?", (node_id,))
         await db.commit()
+
+    async def propagate_staleness(self, start_node_id: str) -> None:
+        """
+        Recursively marks all downstream nodes as STALE if they are currently CACHED or ERROR.
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+
+        all_nodes = await self.get_all_nodes()
+        nodes_by_id = {n.id: n for n in all_nodes}
+        
+        # Build adjacency list for downstream edges
+        downstream_map = {n.id: [] for n in all_nodes}
+        for n in all_nodes:
+            for up_id in n.upstream_ids:
+                if up_id in downstream_map:
+                    downstream_map[up_id].append(n.id)
+
+        # BFS to find all downstream nodes
+        queue = [start_node_id]
+        visited: Set[str] = set()
+
+        while queue:
+            current_id = queue.pop(0)
+            if current_id in visited:
+                continue
+            visited.add(current_id)
+
+            for child_id in downstream_map.get(current_id, []):
+                child_node = nodes_by_id.get(child_id)
+                if child_node and child_node.status in (NodeStatus.CACHED, NodeStatus.ERROR):
+                    child_node.status = NodeStatus.STALE
+                    await self.save_node(child_node)
+                    logger.info(f"[metadata_store] marked downstream node {child_id} as STALE due to upstream changes")
+                    queue.append(child_id)
 
     # ── Edges ────────────────────────────────────────────────────────────────
 

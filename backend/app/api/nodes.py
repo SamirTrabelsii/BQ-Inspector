@@ -56,10 +56,13 @@ async def update_node(node_id: str, req: UpdateNodeRequest) -> Node:
     if not node:
         raise HTTPException(status_code=404, detail="Node not found")
 
+    needs_propagation = False
+
     if req.name is not None:
         node.name = req.name
     if req.sql is not None and req.sql != node.sql:
         node.sql = req.sql
+        needs_propagation = True
         if node.status == NodeStatus.CACHED:
             node.status = NodeStatus.STALE
     if req.position is not None:
@@ -72,20 +75,27 @@ async def update_node(node_id: str, req: UpdateNodeRequest) -> Node:
     # Update CSV fields if provided
     if req.csv_path is not None and req.csv_path != node.csv_path:
         node.csv_path = req.csv_path
+        needs_propagation = True
         if node.status == NodeStatus.CACHED:
             node.status = NodeStatus.STALE
     if req.csv_filename is not None:
         node.csv_filename = req.csv_filename
     if req.csv_delimiter is not None and req.csv_delimiter != node.csv_delimiter:
         node.csv_delimiter = req.csv_delimiter
+        needs_propagation = True
         if node.status == NodeStatus.CACHED:
             node.status = NodeStatus.STALE
     if req.csv_has_header is not None and req.csv_has_header != node.csv_has_header:
         node.csv_has_header = req.csv_has_header
+        needs_propagation = True
         if node.status == NodeStatus.CACHED:
             node.status = NodeStatus.STALE
 
     await metadata_store.save_node(node)
+    
+    if needs_propagation:
+        await metadata_store.propagate_staleness(node_id)
+        
     return node
 
 
@@ -136,4 +146,5 @@ async def upload_csv(node_id: str, file: UploadFile = File(...)) -> Node:
         node.error_message = None
 
     await metadata_store.save_node(node)
+    await metadata_store.propagate_staleness(node_id)
     return node

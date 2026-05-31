@@ -176,6 +176,13 @@ export function ResultsPanel() {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
 
+  // Clear results if the node changes
+  useEffect(() => {
+    setResults(null)
+    setProfile(null)
+    setPage(1)
+  }, [node?.id])
+
   // Load data & profile when node becomes cached
   useEffect(() => {
     if (!node?.id) { setResults(null); setProfile(null); return }
@@ -368,11 +375,7 @@ export function ResultsPanel() {
 
       {/* ── Body ── */}
       <div className="flex-1 min-h-0">
-        {loading && !isSearching ? (
-          <div className="flex items-center justify-center h-full gap-2 text-slate-500">
-            <Loader2 size={14} className="animate-spin" /><span className="text-sm">Loading…</span>
-          </div>
-        ) : error ? (
+        {error ? (
           <div className="flex flex-col items-center justify-center h-full gap-3">
             <p className="text-sm text-red-400 font-mono max-w-md text-center">{error}</p>
             <button
@@ -384,28 +387,44 @@ export function ResultsPanel() {
           </div>
         ) : !node ? (
           <div className="flex items-center justify-center h-full text-slate-600 text-sm">Select a node to view its data</div>
-        ) : !isCached ? (
-          <div className="flex items-center justify-center h-full gap-2 text-slate-500">
-            {node.status === 'running' && <Loader2 size={14} className="animate-spin text-amber-400" />}
-            <span className="text-sm">{node.status === 'running' ? 'Executing…' : 'Run the node to see results'}</span>
-          </div>
         ) : node.status === 'error' ? (
           <div className="flex items-center justify-center h-full px-8">
             <p className="text-sm text-red-400 font-mono text-center">{node.error_message}</p>
           </div>
         ) : tab === 'data' ? (
-          isSearching && searchLoading && !searchRes ? (
-            <div className="flex items-center justify-center h-full gap-2 text-slate-500">
-              <Loader2 size={14} className="animate-spin" /><span className="text-sm">Searching…</span>
-            </div>
-          ) : isSearching && searchRes && searchRes.total_matches === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full gap-2 text-slate-500">
-              <Search size={20} className="text-slate-700" />
-              <span className="text-sm">No results for <code className="text-slate-400">"{searchQuery}"</code></span>
-            </div>
-          ) : displayData ? (
-            <DataTable data={displayData} highlight={isSearching ? searchQuery : ''} />
-          ) : null
+          <div className="relative h-full">
+            {/* Overlays for loading states when data is already present */}
+            {displayData && (loading || node.status === 'running') && (
+              <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-[1px] flex items-center justify-center z-10 transition-all">
+                <div className="flex items-center gap-2 px-4 py-2 bg-slate-800 rounded-lg shadow-xl border border-slate-700/50">
+                  <Loader2 size={16} className="animate-spin text-amber-400" />
+                  <span className="text-sm text-slate-300 font-medium">{node.status === 'running' ? 'Executing…' : 'Loading…'}</span>
+                </div>
+              </div>
+            )}
+
+            {!displayData && loading && !isSearching ? (
+              <div className="flex items-center justify-center h-full gap-2 text-slate-500">
+                <Loader2 size={14} className="animate-spin" /><span className="text-sm">Loading…</span>
+              </div>
+            ) : !displayData && !isCached ? (
+              <div className="flex items-center justify-center h-full gap-2 text-slate-500">
+                {node.status === 'running' && <Loader2 size={14} className="animate-spin text-amber-400" />}
+                <span className="text-sm">{node.status === 'running' ? 'Executing…' : 'Run the node to see results'}</span>
+              </div>
+            ) : isSearching && searchLoading && !searchRes ? (
+              <div className="flex items-center justify-center h-full gap-2 text-slate-500">
+                <Loader2 size={14} className="animate-spin" /><span className="text-sm">Searching…</span>
+              </div>
+            ) : isSearching && searchRes && searchRes.total_matches === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full gap-2 text-slate-500">
+                <Search size={20} className="text-slate-700" />
+                <span className="text-sm">No results for <code className="text-slate-400">"{searchQuery}"</code></span>
+              </div>
+            ) : displayData ? (
+              <DataTable data={displayData} highlight={isSearching ? searchQuery : ''} />
+            ) : null}
+          </div>
         ) : tab === 'diff' ? (
           <DiffView nodeAId={node.id} />
         ) : tab === 'profile' && profile ? (

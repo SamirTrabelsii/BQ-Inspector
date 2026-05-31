@@ -113,7 +113,21 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
   addEdge: async (sourceId, targetId) => {
     const edge = await api.createEdge({ source_id: sourceId, target_id: targetId })
     set((s) => ({ edges: [...s.edges.filter(e => e.id !== edge.id), edge] }))
-    const target = await api.getNode(targetId)
+    let target = await api.getNode(targetId)
+    const source = get().nodes[sourceId]
+
+    // Auto-scaffold SQL if it's a transform node
+    if (target.type === 'transform' && source) {
+      const currentSql = target.sql?.trim() || ''
+      if (currentSql === '') {
+        const newSql = `SELECT * FROM {{${source.name}}}`
+        target = await api.updateNode(targetId, { sql: newSql })
+      } else {
+        const newSql = target.sql + `\n-- JOIN {{${source.name}}} ON ...`
+        target = await api.updateNode(targetId, { sql: newSql })
+      }
+    }
+
     set((s) => ({ nodes: { ...s.nodes, [targetId]: target } }))
     return edge.id  // ← backend UUID, used as RF edge id
   },

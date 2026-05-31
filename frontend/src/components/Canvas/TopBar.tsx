@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Plus, Zap, Database, CircleAlert, CircleCheck, Table2, FolderOpen, Braces } from "lucide-react";
+import { Plus, Zap, Database, CircleAlert, CircleCheck, Table2, FolderOpen, Braces, RefreshCw } from "lucide-react";
 import { useCanvasStore } from "@/store/canvasStore";
 import { useNodeStore } from "@/store/nodeStore";
 import { getBQStatus } from "@/api/client";
@@ -7,7 +7,7 @@ import type { BQStatus } from "@/types";
 
 export function TopBar() {
   const { openAddNode, isCatalogOpen, toggleCatalog, leftSidebarTab, setLeftSidebarTab } = useCanvasStore();
-  const { nodes } = useNodeStore();
+  const { nodes, loadCanvas, loading } = useNodeStore();
 
   const [bqStatus, setBqStatus] = useState<BQStatus | null>(null);
   const [showBQTooltip, setShowBQTooltip] = useState(false);
@@ -130,6 +130,20 @@ export function TopBar() {
             )}
           </div>
         )}
+
+        {/* Refresh button */}
+        <button
+          onClick={() => {
+            getBQStatus().then(setBqStatus).catch(() => setBqStatus({ available: false, message: "Backend unreachable" }));
+            loadCanvas();
+          }}
+          disabled={loading}
+          className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg border border-[#30363d] bg-[#0f1117] hover:bg-[#1c2333] text-gray-300 transition-all disabled:opacity-50"
+          title="Force sync with backend"
+        >
+          <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
+          Sync
+        </button>
 
         {/* Add node button */}
         <button
